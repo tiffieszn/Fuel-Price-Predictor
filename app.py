@@ -1,19 +1,40 @@
 import streamlit as st
 import pandas as pd
-import joblib
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import LabelEncoder
+
 
 st.set_page_config(page_title="Fuel Price Predictor", layout='wide')
 st.title("Fuel Price Prediction App")
 st.write("Predict the **highest daily fuel price ('high')** based on market data.")
 
-#load model
+#train model
 @st.cache_resource
-def load_model():
-    data = joblib.load('model.pkl')
-    return data['model'], data['encoders']
-model, encoders = load_model()
+def train_model():
+    df = pd.read_csv("all_fuels_data.csv")
+
+    encoders = {}
+    for col in ['commodity', 'ticker']:
+        le = LabelEncoder()
+        df[col] = le.fit_transform(df[col])
+        encoders[col] = le
+
+    X = df[['open', 'low', 'close', 'volume', 'commodity', 'ticker']]
+    y = df['high']
+
+    model = RandomForestRegressor(
+        n_estimators=150,
+        random_state=42,
+        n_jobs=-1
+    )
+    model.fit(X, y)
+
+    return model, encoders
+
+model, encoders = train_model()
+
 
 st.sidebar.header('input parametes')
 def user_input_features():

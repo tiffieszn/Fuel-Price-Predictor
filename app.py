@@ -16,12 +16,12 @@ def train_model():
     df = pd.read_csv("all_fuels_data.csv")
 
     encoders = {}
-    for col in ['commodity', 'ticker']:
+    for col in ['commodity']:
         le = LabelEncoder()
         df[col] = le.fit_transform(df[col])
         encoders[col] = le
 
-    X = df[['open', 'low', 'close', 'volume', 'commodity', 'ticker']]
+    X = df[['open', 'low', 'close', 'volume', 'commodity']]
     y = df['high']
 
     model = RandomForestRegressor(
@@ -42,43 +42,50 @@ def user_input_features():
     low_p = st.sidebar.number_input('low price', value=29.5)
     close_p = st.sidebar.number_input('close price', value=30.2)
     volume = st.sidebar.number_input('volume', value=50000)
-    commodity = st.sidebar.text_input('commodity', 'crude oil')
-    ticker = st.sidebar.text_input('Ticker', 'CL=F')
+    commodity = st.sidebar.text_input('commodity', 'Crude Oil')
 
     data = pd.DataFrame({
         'open': [open_p],
         'low': [low_p],
         'close': [close_p],
         'volume': [volume],
-        'commodity': [commodity],
-        'ticker': [ticker]
+        'commodity': [commodity]
     })
     return data
 
 input_df = user_input_features()
 
-for col in ['commodity', 'ticker']:
-    le = encoders[col]
-    try:
-        input_df[col] = le.transform(input_df[col])
-    except ValueError:
-        st.warning(f"'{input_df[col].values[0]}' not in training data for {col}. using default 0.")
-        input_df[col] = 0
+predict_button = st.button("Predict Fuel Price")
 
-prediction = model.predict(input_df)[0]
-st.metric("Predicted High Price", f"{prediction:.2f}")
-st.subheader("Feature Importance")
-importances = model.feature_importances_
-features = ['open', 'low', 'close', 'volume', 'commodity', 'ticker']
+if predict_button:
+    for col in ['commodity']:
+        le = encoders[col]
+        try:
+            input_df[col] = le.transform(input_df[col])
+        except ValueError:
+            st.warning(f"'{input_df[col].values[0]}' not in training data for {col}. using default 0.")
+            input_df[col] = 0
 
-fig, ax = plt.subplots()
-ax.barh(features, importances)
-ax.set_xlabel('importance')
-ax.set_title('feature importance')
-st.pyplot(fig)
+    prediction = model.predict(input_df)[0]
+    st.metric("Predicted High Price", f"{prediction:.2f}")
+    st.subheader("Feature Importance")
+    importances = model.feature_importances_
+    features = ['open', 'low', 'close', 'volume', 'commodity']
 
-st.subheader('Sample Prediction Distribution')
-sample_pred = np.random.normal(prediction, 0.2, 50)
-plt.figure(figsize=(6, 3))
-plt.hist(sample_pred, bins=25, alpha=0.7)
-st.pyplot(plt)
+    fig, ax = plt.subplots()
+    ax.barh(features, importances)
+    ax.set_xlabel('importance')
+    ax.set_title('feature importance')
+    st.pyplot(fig)
+
+    st.subheader('Sample Prediction Distribution')
+    sample_pred = np.random.normal(prediction, 0.2, 50)
+    fig2, ax2 = plt.subplots(figsize=(6, 3))
+    ax2.hist(sample_pred, bins=25, alpha=0.7)
+    ax2.set_title("Simulated Prediction Variability")
+    ax2.set_xlabel("Predicted High Price")
+    ax2.set_ylabel("Frequency")
+    st.pyplot(fig2)
+else: 
+    st.info("Adjust the inputs and click **Predict Fuel Price** to see results.")
+   

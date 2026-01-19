@@ -7,11 +7,11 @@ import joblib
 
 df = pd.read_csv("all_fuels_data.csv")
 
-features = ["open", "low", "close", "volume", 'commodity', "ticker"]
+features = ["open", "low", "close", "volume", 'commodity']
 target = "high"
 
 encoders = {}
-for col in ['commodity', 'ticker']:
+for col in ['commodity']:
     le = LabelEncoder()
     df[col] = le.fit_transform(df[col])
     encoders[col] = le

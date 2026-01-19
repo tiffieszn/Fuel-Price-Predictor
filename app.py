@@ -7,6 +7,7 @@ from pathlib import Path
 
 st.set_page_config(page_title="Fuel Price Predictor", layout="wide")
 
+# ====== Header ======
 st.title("Fuel Price Predictor ⛽📈")
 st.caption("Pick a commodity, slide the knobs, get the predicted **High** price. No drama.")
 
@@ -22,6 +23,7 @@ This app predicts the **highest daily fuel price (High)** using a trained regres
 """
     )
 
+# ====== Load artifacts ======
 @st.cache_resource
 def load_artifacts():
     model_path = Path(__file__).resolve().parent / "model.pkl"
@@ -42,6 +44,7 @@ features = bundle["features"]  # ["open","low","close","volume_log10","commodity
 ui_ranges_by_commodity = bundle["ui_ranges_by_commodity"]
 ui_ranges_global = bundle["ui_ranges_global"]
 
+# ====== Inputs (CENTER, NO SIDEBAR) ======
 st.subheader("Your inputs")
 
 colA, colB, colC = st.columns([1.2, 1.2, 1.2], gap="large")
@@ -50,6 +53,7 @@ with colA:
     commodity_options = list(encoders["commodity"].classes_)
     commodity = st.selectbox("Commodity", commodity_options)
 
+# pick per-commodity ranges; fallback to global
 ranges = ui_ranges_by_commodity.get(commodity, ui_ranges_global)
 
 open_min, open_max = ranges["open"]
@@ -63,10 +67,12 @@ with colB:
     close_p = st.slider("Close Price", close_min, close_max, close_min)
 
 with colC:
+    # Volume slider in log space -> user sees real volume too
     volume_log10 = st.slider("Volume (log scale)", vlog_min, vlog_max, vlog_min)
     volume_real = int(round(10 ** volume_log10))
     st.metric("Volume (approx)", f"{volume_real:,}")
 
+# Small sanity feedback (kept chill)
 notes = []
 if low_p > min(open_p, close_p):
     notes.append("Low is higher than Open/Close. That’s kinda sus, but I’ll still predict.")
@@ -74,6 +80,7 @@ if low_p > min(open_p, close_p):
 if notes:
     st.warning(" ".join(notes))
 
+# ====== Build model input ======
 commodity_encoded = encoders["commodity"].transform([commodity])[0]
 
 input_df = pd.DataFrame(
@@ -81,6 +88,7 @@ input_df = pd.DataFrame(
     columns=features,
 )
 
+# ====== Predict area ======
 st.divider()
 
 cta_left, cta_right = st.columns([1, 2], gap="large")
@@ -97,6 +105,7 @@ if predict_button:
     st.subheader("Result")
     st.metric("Predicted High Price", f"{pred:,.2f}")
 
+    # Show what the model saw
     with st.expander("Show input summary", expanded=True):
         summary_df = pd.DataFrame(
             {
@@ -106,6 +115,7 @@ if predict_button:
         )
         st.dataframe(summary_df, use_container_width=True)
 
+    # Feature importance (GBR supports it)
     st.subheader("What mattered most (feature importance)")
     importances = getattr(model, "feature_importances_", None)
 

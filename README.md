@@ -1,77 +1,180 @@
-# Fuel-Price-Predictor
-A machine learning web application built with **Streamlit** that predicts the **highest daily fuel price (`high`)** based on market features such as open, low, close, volume, and commodity type.
+# Fuel Price Predictor
 
-The app also provides:
-- Feature importance visualization  
-- Sample prediction distribution  
+Fuel Price Predictor is a machine learning application designed to predict the **highest daily fuel price (High)** based on historical market data.
 
+This project was developed as part of the **MLOps course (COMP6984001)** and demonstrates a complete workflow from **model training to deployment** using **Streamlit**.
 
-# Project Overview
-This project consists of two main components:
+---
 
-1. **Model Training (`train_model.py`)**
-   - Trains a machine learning model using historical fuel price data.
-   - Uses **Random Forest Regressor**.
-   - Encodes categorical variables (`commodity`).
-   - Saves the trained model and encoders as `model.pkl`.
+## Project Overview
 
-2. **Web Application (`app.py`)**
-   - Built with **Streamlit**.
-   - Loads the trained model.
-   - Allows users to input values.
-   - Generates predictions and visualizations only after clicking **“Predict Fuel Price”**.
+Fuel price volatility plays a critical role in energy markets, logistics planning, and economic decision-making.
 
+This project formulates fuel price prediction as a **supervised regression problem**, focusing on estimating the highest daily price using historical price and volume data across multiple fuel commodities.
 
-# Dataset
-The model is trained using:
-all_fuels_data.csv
+The system consists of:
+- An **offline training script** for model building and serialization
+- A **Streamlit web application** for inference and visualization
+- A **clean repository structure** aligned with MLOps best practices
 
-Required columns:
+---
+
+## Features
+
+- Predicts **highest daily fuel price (High)**
+- Supports multiple fuel commodities:
+  - Crude Oil
+  - Brent Crude Oil
+  - Natural Gas
+  - Heating Oil
+  - RBOB Gasoline
+- Streamlit interface with:
+  - Slider-based numerical inputs bounded by training data ranges
+  - Dropdown selection for categorical variables
+- Feature importance visualization
+- Clear separation between **training** and **inference**
+
+---
+
+## Repository Structure
+
+```text
+Fuel-Price-Predictor/
+│
+├── app.py                 # Streamlit inference application
+├── train_model.py         # Model training script
+├── model.pkl              # Trained model and artifacts (generated after training)
+├── all_fuels_data.csv     # Dataset
+├── requirements.txt       # Python dependencies
+├── README.md              # Project documentation
+├── .gitignore             # Git ignore rules
+└── .github/workflows/     # CI/CD pipeline configuration
+```
+
+---
+
+## Dataset
+
+- **Source**: Open historical fuel market data
+- **File**: `all_fuels_data.csv`
+
+### Features
 - `open`
 - `low`
 - `close`
 - `volume`
 - `commodity`
-- `high` (target variable)
 
+### Target
+- `high`
 
-# Machine Learning Algorithm
-We use:
-**Random Forest Regressor**
+---
 
-Why this model?
-- Handles non-linear relationships well  
-- Robust to outliers  
-- Provides feature importance  
-- Works well with mixed numerical and encoded categorical data  
+## Model
 
-Key parameters:
-- `n_estimators = 150`
-- `random_state = 42`
-- `n_jobs = -1` (uses all CPU cores)
+- **Algorithm**: Gradient Boosting Regressor
+- **Objective**: Squared error loss
 
+### Key Hyperparameters
+- `learning_rate = 0.05`
+- `n_estimators = 500`
+- `max_depth = 5`
 
-# Training Process (Summary)
-1. Load dataset (`all_fuels_data.csv`)
-2. Encode categorical column (`commodity`) using LabelEncoder  
-3. Define features (`X`) and target (`y = high`)  
-4. Train Random Forest model  
-5. Save model and encoders as `model.pkl`
+### Preprocessing
+- Commodity values are encoded using **Label Encoding**
+- Feature ranges are extracted from training data and stored for safe inference
 
+---
 
-# How to Run Locally
-1. Create a virtual environment (recommended)
+## Training the Model
+
+Run the training script to generate the trained model and artifacts:
+
 ```bash
-python -m venv venv
-venv\Scripts\activate   # Windows
-
-2. Install dependencies
-pip install -r requirements.txt
-
-3. Train the Model
 python train_model.py
+```
 
-4. Run the streamlit app
+This will produce `model.pkl`, which contains:
+- Trained model
+- Encoders
+- Feature ranges
+- Feature metadata
+
+> Training is performed **offline** and should not be repeated inside the Streamlit application.
+
+---
+
+## Running the Streamlit App
+
+After training the model, launch the application locally:
+
+```bash
 streamlit run app.py
+```
 
+The application will:
+- Load the pre-trained model from `model.pkl`
+- Accept user inputs through sliders and dropdowns
+- Perform inference
+- Display prediction results and visualizations
 
+---
+
+## Application Workflow
+
+1. User selects a fuel commodity
+2. User adjusts market parameters using sliders
+3. Input values are validated against training data ranges
+4. The model predicts the highest daily price
+5. Results and feature importance are displayed
+
+---
+
+## MLOps Practices Applied
+
+- Clear separation between training and inference
+- Serialized model artifacts
+- Reproducible environment via `requirements.txt`
+- Clean repository structure
+- CI/CD pipeline for automated checks
+
+---
+
+## Requirements
+
+### Main Dependencies
+- Python 3.9+
+- streamlit
+- pandas
+- numpy
+- scikit-learn
+- matplotlib
+- joblib
+
+Install all dependencies using:
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## Demo Video
+
+A short demo video (≤ 1 minute) is provided separately, demonstrating:
+- Application usage
+- End-to-end workflow
+
+---
+
+## Team Members
+
+- **Muhammad Iqbal Saputra** – 2702390236  
+- **Tiffanny Rosyanna Dewi** – 2802508666  
+- **Meyathala Razditya** – 2802535673  
+- **Ellen Ardelia Hartono** – 2802513685  
+
+**Program**: Bachelor of Artificial Intelligence  
+**Institution**: Bina Nusantara University  
+**Course Code**: COMP6984001  
+**Semester**: Odd

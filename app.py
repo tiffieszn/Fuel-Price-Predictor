@@ -7,95 +7,116 @@ from pathlib import Path
 
 st.set_page_config(page_title="Fuel Price Predictor", layout="wide")
 
-st.title("Fuel Price Predictor")
-st.write(
-    "This application predicts the **highest daily fuel price** "
-    "based on historical market features."
-)
+st.title("Fuel Price Predictor ⛽📈")
+st.caption("Pick a commodity, slide the knobs, get the predicted **High** price. No drama.")
 
-with st.expander("How to use", expanded=True):
+with st.expander("what even is this?", expanded=False):
     st.markdown(
         """
-1. Select a fuel commodity.
-2. Adjust the market parameters using the sliders.
-3. Click **Predict** to estimate the price.
+This app predicts the **highest daily fuel price (High)** using a trained regression model.
 
-All input ranges are bounded based on the training data to ensure valid predictions.
+**How to use (speedrun):**
+1) Choose a commodity  
+2) Adjust Open / Low / Close + Volume  
+3) Hit **Predict**  
 """
     )
 
 @st.cache_resource
 def load_artifacts():
     model_path = Path(__file__).resolve().parent / "model.pkl"
+    if not model_path.exists():
+        st.error(
+            "model.pkl not found. Run `python train_model.py` locally, commit `model.pkl`, then redeploy."
+        )
+        st.stop()
+
     bundle = joblib.load(model_path)
+    return bundle
 
-    return (
-        bundle["model"],
-        bundle["encoders"],
-        bundle["feature_ranges"],
-        bundle["features"],
-    )
+bundle = load_artifacts()
 
+model = bundle["model"]
+encoders = bundle["encoders"]
+features = bundle["features"]  # ["open","low","close","volume_log10","commodity"]
+ui_ranges_by_commodity = bundle["ui_ranges_by_commodity"]
+ui_ranges_global = bundle["ui_ranges_global"]
 
-model, encoders, feature_ranges, feature_names = load_artifacts()
+st.subheader("Your inputs")
 
-st.sidebar.header("Input Parameters")
+colA, colB, colC = st.columns([1.2, 1.2, 1.2], gap="large")
 
-commodity_options = list(encoders["commodity"].classes_)
-commodity = st.sidebar.selectbox("Commodity", commodity_options)
+with colA:
+    commodity_options = list(encoders["commodity"].classes_)
+    commodity = st.selectbox("Commodity", commodity_options)
 
-open_min, open_max = feature_ranges["open"]
-low_min, low_max = feature_ranges["low"]
-close_min, close_max = feature_ranges["close"]
-vol_min, vol_max = feature_ranges["volume"]
+ranges = ui_ranges_by_commodity.get(commodity, ui_ranges_global)
 
-open_p = st.sidebar.slider("Open Price", open_min, open_max, open_min)
-low_p = st.sidebar.slider("Low Price", low_min, low_max, low_min)
-close_p = st.sidebar.slider("Close Price", close_min, close_max, close_min)
-volume = st.sidebar.slider("Volume", vol_min, vol_max, vol_min)
+open_min, open_max = ranges["open"]
+low_min, low_max = ranges["low"]
+close_min, close_max = ranges["close"]
+vlog_min, vlog_max = ranges["volume_log10"]
 
-warnings = []
+with colB:
+    open_p = st.slider("Open Price", open_min, open_max, open_min)
+    low_p = st.slider("Low Price", low_min, low_max, low_min)
+    close_p = st.slider("Close Price", close_min, close_max, close_min)
+
+with colC:
+    volume_log10 = st.slider("Volume (log scale)", vlog_min, vlog_max, vlog_min)
+    volume_real = int(round(10 ** volume_log10))
+    st.metric("Volume (approx)", f"{volume_real:,}")
+
+notes = []
 if low_p > min(open_p, close_p):
-    warnings.append("Low price is higher than Open/Close. Please check the inputs.")
+    notes.append("Low is higher than Open/Close. That’s kinda sus, but I’ll still predict.")
 
-if volume == 0:
-    warnings.append("Volume is zero. Prediction reliability may be reduced.")
-
-if warnings:
-    st.sidebar.warning(" ".join(warnings))
+if notes:
+    st.warning(" ".join(notes))
 
 commodity_encoded = encoders["commodity"].transform([commodity])[0]
 
 input_df = pd.DataFrame(
-    [[open_p, low_p, close_p, volume, commodity_encoded]],
-    columns=feature_names,
+    [[open_p, low_p, close_p, volume_log10, commodity_encoded]],
+    columns=features,
 )
 
-predict_button = st.button("Predict", type="primary")
+st.divider()
+
+cta_left, cta_right = st.columns([1, 2], gap="large")
+
+with cta_left:
+    predict_button = st.button("Predict 🔮", type="primary", use_container_width=True)
+
+with cta_right:
+    st.caption("Tip: ranges adapt per commodity, so the sliders won’t go full chaos.")
 
 if predict_button:
-    prediction = float(model.predict(input_df)[0])
+    pred = float(model.predict(input_df)[0])
 
-    st.subheader("Prediction Result")
-    st.metric("Predicted High Price", f"{prediction:,.2f}")
+    st.subheader("Result")
+    st.metric("Predicted High Price", f"{pred:,.2f}")
 
-    st.subheader("Feature Importance")
-    importances = model.feature_importances_
+    with st.expander("Show input summary", expanded=True):
+        summary_df = pd.DataFrame(
+            {
+                "Feature": ["Commodity", "Open", "Low", "Close", "Volume (approx)"],
+                "Value": [commodity, open_p, low_p, close_p, volume_real],
+            }
+        )
+        st.dataframe(summary_df, use_container_width=True)
 
-    fig, ax = plt.subplots()
-    ax.barh(feature_names, importances)
-    ax.set_xlabel("Importance")
-    ax.set_title("Model Feature Importance")
-    st.pyplot(fig)
+    st.subheader("What mattered most (feature importance)")
+    importances = getattr(model, "feature_importances_", None)
 
-    st.subheader("Input Summary")
-    summary_df = pd.DataFrame(
-        {
-            "Feature": ["Commodity", "Open", "Low", "Close", "Volume"],
-            "Value": [commodity, open_p, low_p, close_p, volume],
-        }
-    )
-    st.dataframe(summary_df, use_container_width=True)
+    if importances is None:
+        st.info("This model doesn’t expose feature importance.")
+    else:
+        fig, ax = plt.subplots()
+        ax.barh(features, importances)
+        ax.set_xlabel("Importance")
+        ax.set_title("Feature Importance")
+        st.pyplot(fig)
 
 else:
-    st.info("Adjust the inputs on the left and click **Predict** to see the result.")
+    st.info("Slide the inputs above, then smash **Predict 🔮**.")

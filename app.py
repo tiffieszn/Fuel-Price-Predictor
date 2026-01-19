@@ -2,90 +2,100 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import LabelEncoder
+import joblib
+from pathlib import Path
 
+st.set_page_config(page_title="Fuel Price Predictor", layout="wide")
 
-st.set_page_config(page_title="Fuel Price Predictor", layout='wide')
-st.title("Fuel Price Prediction App")
-st.write("Predict the **highest daily fuel price ('high')** based on market data.")
+st.title("Fuel Price Predictor")
+st.write(
+    "This application predicts the **highest daily fuel price** "
+    "based on historical market features."
+)
 
-#train model
-@st.cache_resource
-def train_model():
-    df = pd.read_csv("all_fuels_data.csv")
+with st.expander("How to use", expanded=True):
+    st.markdown(
+        """
+1. Select a fuel commodity.
+2. Adjust the market parameters using the sliders.
+3. Click **Predict** to estimate the price.
 
-    encoders = {}
-    for col in ['commodity']:
-        le = LabelEncoder()
-        df[col] = le.fit_transform(df[col])
-        encoders[col] = le
-
-    X = df[['open', 'low', 'close', 'volume', 'commodity']]
-    y = df['high']
-
-    model = RandomForestRegressor(
-        n_estimators=150,
-        random_state=42,
-        n_jobs=-1
+All input ranges are bounded based on the training data to ensure valid predictions.
+"""
     )
-    model.fit(X, y)
 
-    return model, encoders
+@st.cache_resource
+def load_artifacts():
+    model_path = Path(__file__).resolve().parent / "model.pkl"
+    bundle = joblib.load(model_path)
 
-model, encoders = train_model()
+    return (
+        bundle["model"],
+        bundle["encoders"],
+        bundle["feature_ranges"],
+        bundle["features"],
+    )
 
 
-st.sidebar.header('input parametes')
-def user_input_features():
-    open_p = st.sidebar.number_input('open price', value=30.0)
-    low_p = st.sidebar.number_input('low price', value=29.5)
-    close_p = st.sidebar.number_input('close price', value=30.2)
-    volume = st.sidebar.number_input('volume', value=50000)
-    commodity = st.sidebar.text_input('commodity', 'Crude Oil')
+model, encoders, feature_ranges, feature_names = load_artifacts()
 
-    data = pd.DataFrame({
-        'open': [open_p],
-        'low': [low_p],
-        'close': [close_p],
-        'volume': [volume],
-        'commodity': [commodity]
-    })
-    return data
+st.sidebar.header("Input Parameters")
 
-input_df = user_input_features()
+commodity_options = list(encoders["commodity"].classes_)
+commodity = st.sidebar.selectbox("Commodity", commodity_options)
 
-predict_button = st.button("Predict Fuel Price")
+open_min, open_max = feature_ranges["open"]
+low_min, low_max = feature_ranges["low"]
+close_min, close_max = feature_ranges["close"]
+vol_min, vol_max = feature_ranges["volume"]
+
+open_p = st.sidebar.slider("Open Price", open_min, open_max, open_min)
+low_p = st.sidebar.slider("Low Price", low_min, low_max, low_min)
+close_p = st.sidebar.slider("Close Price", close_min, close_max, close_min)
+volume = st.sidebar.slider("Volume", vol_min, vol_max, vol_min)
+
+warnings = []
+if low_p > min(open_p, close_p):
+    warnings.append("Low price is higher than Open/Close. Please check the inputs.")
+
+if volume == 0:
+    warnings.append("Volume is zero. Prediction reliability may be reduced.")
+
+if warnings:
+    st.sidebar.warning(" ".join(warnings))
+
+commodity_encoded = encoders["commodity"].transform([commodity])[0]
+
+input_df = pd.DataFrame(
+    [[open_p, low_p, close_p, volume, commodity_encoded]],
+    columns=feature_names,
+)
+
+predict_button = st.button("Predict", type="primary")
 
 if predict_button:
-    for col in ['commodity']:
-        le = encoders[col]
-        try:
-            input_df[col] = le.transform(input_df[col])
-        except ValueError:
-            st.warning(f"'{input_df[col].values[0]}' not in training data for {col}. using default 0.")
-            input_df[col] = 0
+    prediction = float(model.predict(input_df)[0])
 
-    prediction = model.predict(input_df)[0]
-    st.metric("Predicted High Price", f"{prediction:.2f}")
+    st.subheader("Prediction Result")
+    st.metric("Predicted High Price", f"{prediction:,.2f}")
+
     st.subheader("Feature Importance")
     importances = model.feature_importances_
-    features = ['open', 'low', 'close', 'volume', 'commodity']
 
     fig, ax = plt.subplots()
-    ax.barh(features, importances)
-    ax.set_xlabel('importance')
-    ax.set_title('feature importance')
+    ax.barh(feature_names, importances)
+    ax.set_xlabel("Importance")
+    ax.set_title("Model Feature Importance")
     st.pyplot(fig)
 
-    st.subheader('Sample Prediction Distribution')
-    sample_pred = np.random.normal(prediction, 0.2, 50)
-    fig2, ax2 = plt.subplots(figsize=(6, 3))
-    ax2.hist(sample_pred, bins=25, alpha=0.7)
-    ax2.set_title("Simulated Prediction Variability")
-    ax2.set_xlabel("Predicted High Price")
-    ax2.set_ylabel("Frequency")
-    st.pyplot(fig2)
-else: 
-    st.info("Adjust the inputs and click **Predict Fuel Price** to see results.")
-   
+    st.subheader("Input Summary")
+    summary_df = pd.DataFrame(
+        {
+            "Feature": ["Commodity", "Open", "Low", "Close", "Volume"],
+            "Value": [commodity, open_p, low_p, close_p, volume],
+        }
+    )
+    st.dataframe(summary_df, use_container_width=True)
+
+else:
+    st.info("Adjust the inputs on the left and click **Predict** to see the result.")

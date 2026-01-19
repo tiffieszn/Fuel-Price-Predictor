@@ -11,57 +11,57 @@ DATA_PATH = "all_fuels_data.csv"
 OUTPUT_PATH = "model.pkl"
 
 RANDOM_STATE = 42
-
-# Robust bounds for UI sliders (avoids extreme outliers dominating the slider)
 LOW_Q = 0.01
 HIGH_Q = 0.99
 
 
 def qrange(series: pd.Series, low_q=LOW_Q, high_q=HIGH_Q) -> tuple[float, float]:
-    """Robust min/max for UI sliders using quantiles."""
     s = pd.to_numeric(series, errors="coerce").dropna()
     if s.empty:
         return (0.0, 1.0)
+
     lo = float(s.quantile(low_q))
     hi = float(s.quantile(high_q))
+
     if lo == hi:
         lo = float(s.min())
         hi = float(s.max())
+
+    # guard if weird ordering
+    if lo > hi:
+        lo, hi = hi, lo
     return (lo, hi)
 
 
 def main():
     df = pd.read_csv(DATA_PATH)
 
-    # Keep only needed columns, drop missing
     needed = ["open", "low", "close", "volume", "commodity", "high"]
     df = df.dropna(subset=needed).copy()
 
-    # Coerce numeric
+    # coerce numeric
     for c in ["open", "low", "close", "high", "volume"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df = df.dropna(subset=["open", "low", "close", "high", "volume"]).copy()
 
-    # ====== Remove negative prices (per your request) ======
-    # You said negative values are likely a 1-row anomaly.
-    # We remove ANY rows where price columns are negative.
+    # remove negative price anomalies (your requirement)
     price_cols = ["open", "low", "close", "high"]
     df = df[(df[price_cols] >= 0).all(axis=1)].copy()
 
-    # Also remove non-positive volumes (can't log)
+    # volume must be positive for log
     df = df[df["volume"] > 0].copy()
 
-    # Encode commodity (keep original string for UI ranges)
+    # keep commodity string for UI mapping
     df["commodity_str"] = df["commodity"].astype(str)
 
+    # encode commodity
     le = LabelEncoder()
     df["commodity"] = le.fit_transform(df["commodity_str"])
     encoders = {"commodity": le}
 
-    # Volume transform for training stability
+    # volume transform
     df["volume_log10"] = np.log10(df["volume"].clip(lower=1))
 
-    # Define model features/target
     features = ["open", "low", "close", "volume_log10", "commodity"]
     target = "high"
 
@@ -82,20 +82,17 @@ def main():
     )
     model.fit(x_train, y_train)
 
-    # ====== Per-commodity UI ranges (robust quantiles) ======
-    # We store ranges by COMMODITY NAME (string), because that's what user selects in the UI.
+    # per-commodity UI ranges (robust quantiles)
     ui_ranges_by_commodity: dict[str, dict[str, tuple[float, float]]] = {}
-
     for comm_name, g in df.groupby("commodity_str"):
         ui_ranges_by_commodity[comm_name] = {
             "open": qrange(g["open"]),
             "low": qrange(g["low"]),
             "close": qrange(g["close"]),
-            # slider will be in LOG space (much more user-friendly)
             "volume_log10": qrange(g["volume_log10"]),
         }
 
-    # Fallback/global ranges (in case something goes weird)
+    # global ranges (fallback)
     ui_ranges_global = {
         "open": qrange(df["open"]),
         "low": qrange(df["low"]),
@@ -103,7 +100,15 @@ def main():
         "volume_log10": qrange(df["volume_log10"]),
     }
 
-    # Raw ranges (reference/debug)
+    # ALSO save legacy key for backward compatibility
+    # (some old app versions expect this)
+    ui_feature_ranges = {
+        "open": ui_ranges_global["open"],
+        "low": ui_ranges_global["low"],
+        "close": ui_ranges_global["close"],
+        "volume_log10": ui_ranges_global["volume_log10"],
+    }
+
     raw_feature_ranges = {
         "open": (float(df["open"].min()), float(df["open"].max())),
         "low": (float(df["low"].min()), float(df["low"].max())),
@@ -117,12 +122,15 @@ def main():
         "encoders": encoders,
         "features": features,
         "target": target,
-        # UI ranges for Streamlit sliders
+
+        # NEW schema (preferred)
         "ui_ranges_by_commodity": ui_ranges_by_commodity,
         "ui_ranges_global": ui_ranges_global,
-        # Raw ranges
+
+        # OLD schema (keep it so nothing breaks)
+        "ui_feature_ranges": ui_feature_ranges,
+
         "raw_feature_ranges": raw_feature_ranges,
-        # Tell the app how to transform volume
         "transforms": {
             "volume": {
                 "type": "log10",
@@ -135,18 +143,17 @@ def main():
             "data_path": DATA_PATH,
             "quantiles_for_ui": (LOW_Q, HIGH_Q),
             "random_state": RANDOM_STATE,
-            "note": "Negative prices removed for UI/domain constraints.",
+            "rows_after_cleaning": int(len(df)),
+            "note": "Negative price rows removed (domain constraint).",
         },
     }
 
     joblib.dump(bundle, OUTPUT_PATH)
 
-    print(f"Model trained and saved as {OUTPUT_PATH}")
-    print(f"Rows after cleaning: {len(df):,}")
-    print("Example UI ranges (global):")
-    for k, v in ui_ranges_global.items():
-        print(f"  - {k}: {v}")
-    print(f"Commodities saved: {len(ui_ranges_by_commodity)}")
+    print(f"Saved: {OUTPUT_PATH}")
+    print("Bundle keys:", sorted(bundle.keys()))
+    print("Commodities:", len(ui_ranges_by_commodity))
+    print("Global UI ranges:", ui_ranges_global)
 
 
 if __name__ == "__main__":

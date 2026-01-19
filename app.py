@@ -1,3 +1,4 @@
+# app.py
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -7,17 +8,16 @@ from pathlib import Path
 st.set_page_config(page_title="Fuel Price Predictor", layout="wide")
 
 st.title("Fuel Price Predictor")
-st.caption("This app predicts the highest daily fuel price (High) based on historical market features.")
+st.caption("Predict the highest daily fuel price (High) from market features.")
 
 with st.expander("About this app", expanded=False):
     st.markdown(
         """
-**What it does**  
-Predicts the **highest daily fuel price (High)** using a trained regression model.
+This app predicts **High price** using a trained regression model.
 
 **How to use**
-1. Choose a commodity
-2. Adjust Open / Low / Close and Volume
+1. Pick a commodity  
+2. Adjust Open / Low / Close and Volume  
 3. Click **Predict**
 """
     )
@@ -27,7 +27,7 @@ Predicts the **highest daily fuel price (High)** using a trained regression mode
 def load_bundle():
     model_path = Path(__file__).resolve().parent / "model.pkl"
     if not model_path.exists():
-        st.error("model.pkl was not found. Please run train_model.py and ensure model.pkl is committed.")
+        st.error("model.pkl was not found. Run train_model.py and make sure model.pkl is in the repo.")
         st.stop()
     return joblib.load(model_path)
 
@@ -41,8 +41,6 @@ features = bundle.get("features", ["open", "low", "close", "volume_log10", "comm
 ui_ranges_by_commodity = bundle.get("ui_ranges_by_commodity", {})
 ui_ranges_global = bundle.get("ui_ranges_global") or bundle.get("ui_feature_ranges")
 
-feature_importances = bundle.get("feature_importances")
-
 if model is None or "commodity" not in encoders or ui_ranges_global is None:
     st.error("The model bundle is missing required artifacts. Please retrain and regenerate model.pkl.")
     with st.expander("Debug: bundle keys"):
@@ -53,12 +51,12 @@ commodity_options = list(encoders["commodity"].classes_)
 
 st.subheader("Input Parameters")
 
-col1, col2, col3 = st.columns([1.2, 1.2, 1.2], gap="large")
+c1, c2, c3 = st.columns([1.2, 1.2, 1.2], gap="large")
 
-with col1:
+with c1:
     commodity = st.selectbox("Commodity", commodity_options)
 
-# Choose ranges (per commodity if available, otherwise global)
+# ranges: prefer per-commodity, fallback to global
 ranges = ui_ranges_by_commodity.get(commodity, ui_ranges_global)
 
 open_min, open_max = ranges["open"]
@@ -66,12 +64,12 @@ low_min, low_max = ranges["low"]
 close_min, close_max = ranges["close"]
 vlog_min, vlog_max = ranges.get("volume_log10", ui_ranges_global["volume_log10"])
 
-with col2:
+with c2:
     open_p = st.slider("Open Price", float(open_min), float(open_max), float(open_min))
     low_p = st.slider("Low Price", float(low_min), float(low_max), float(low_min))
     close_p = st.slider("Close Price", float(close_min), float(close_max), float(close_min))
 
-with col3:
+with c3:
     volume_log10 = st.slider("Volume (log scale)", float(vlog_min), float(vlog_max), float(vlog_min))
     volume_real = int(round(10 ** volume_log10))
     st.metric("Volume (approx.)", f"{volume_real:,}")
@@ -79,7 +77,6 @@ with col3:
 warnings = []
 if low_p > min(open_p, close_p):
     warnings.append("Low price is higher than Open/Close. Please check the inputs.")
-
 if warnings:
     st.warning(" ".join(warnings))
 
@@ -112,13 +109,15 @@ if predict:
         )
 
     st.subheader("Feature Importance")
-    if feature_importances is None:
-        st.info("Feature importance is not available for this simulations.")
+    # IMPORTANT: Feature importance is model-level, not input-dependent.
+    importances = getattr(model, "feature_importances_", None)
+    if importances is None:
+        st.info("Feature importance is not available for this model type.")
     else:
         fig, ax = plt.subplots()
-        ax.barh(features, feature_importances)
+        ax.barh(features, importances)
         ax.set_xlabel("Importance")
-        ax.set_title("Feature Importance")
+        ax.set_title("Global Feature Importance (Model-Level)")
         st.pyplot(fig)
 
 else:
